@@ -1,0 +1,61 @@
+services:
+  database:
+    image: mariadb:11.8.9
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-local-root-change-me}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-dry_docks}
+      MARIADB_USER: ${MARIADB_USER:-dry_docks_app}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-local-app-change-me}
+    ports:
+      - "127.0.0.1:${DB_PORT:-3307}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: database
+      DB_PORT: 3306
+      DB_NAME: ${MARIADB_DATABASE:-dry_docks}
+      DB_USER: ${MARIADB_USER:-dry_docks_app}
+      DB_PASSWORD: ${MARIADB_PASSWORD:-local-app-change-me}
+      UPLOAD_DIR: /app/uploads
+      CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-8080}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  mariadb_data:
+  backend_uploads:
